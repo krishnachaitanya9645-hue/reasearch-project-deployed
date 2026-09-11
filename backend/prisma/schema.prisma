@@ -1,0 +1,241 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum UserRole {
+  STUDENT
+  STAFF
+  RESEARCHER
+}
+
+model User {
+  id           String              @id @default(uuid())
+  name         String
+  email        String              @unique
+  passwordHash String?
+  role         UserRole            @default(RESEARCHER)
+  googleId     String?             @unique
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  workspaces   ResearchWorkspace[]
+}
+
+model ResearchWorkspace {
+  id                      String              @id @default(uuid())
+  name                    String
+  question                String
+  field                   String
+  objectives              String[]
+  keywords                String[]
+  description             String
+  progress                Int                 @default(0)
+  userId                  String?
+  user                    User?               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt               DateTime            @default(now())
+  updatedAt               DateTime            @updatedAt
+  papers                  Paper[]
+  documents               Document[]
+  gaps                    ResearchGap[]
+  directions              ResearchDirection[]
+  experiments             Experiment[]
+  tasks                   Task[]
+  reports                 Report[]
+  agentRuns               AgentRun[]
+  paperComparisons        PaperComparison[]
+}
+
+model Paper {
+  id                 String             @id @default(uuid())
+  externalId         String?
+  source             String             @default("OpenAlex")
+  title              String
+  authors            String[]
+  year               Int
+  journalOrConf      String
+  venue              String?
+  abstract           String
+  citations          Int                @default(0)
+  tags               String[]
+  doi                String?
+  url                String?
+  pdfUrl             String?
+  isSaved            Boolean            @default(false)
+  isAddedToWorkspace Boolean            @default(false)
+  workspaceId        String?
+  workspace          ResearchWorkspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  createdAt          DateTime           @default(now())
+  analysis           PaperAnalysis?
+}
+
+model PaperAnalysis {
+  id              String   @id @default(uuid())
+  paperId         String   @unique
+  paper           Paper    @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  objective       String
+  methodology     String
+  dataset         String
+  resultsSummary  String
+  limitations     String
+  keyFindings     String[]
+  confidenceScore Int      @default(95)
+  createdAt       DateTime @default(now())
+}
+
+model PaperComparison {
+  id              String            @id @default(uuid())
+  workspaceId     String
+  workspace       ResearchWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  paperIds        String[]
+  comparisonRows  Json
+  aiSynthesis     String            @db.Text
+  createdAt       DateTime          @default(now())
+}
+
+enum DocumentSourceType {
+  FILE
+  TEXT
+}
+
+model Document {
+  id            String             @id @default(uuid())
+  name          String
+  fileSize      String             @default("0 KB")
+  fileType      String             @default("PDF") // PDF | DOC | DOCX | TEXT
+  sourceType    DocumentSourceType @default(FILE)
+  uploadDate    String
+  author        String             @default("User")
+  status        String             @default("Analyzed") // Processing | Analyzed | Failed
+  extractedText String?            @db.Text
+  detectedTopic String?
+  detectedField String?
+  keywords      String[]
+  textLength    Int                @default(0)
+  workspaceId   String?
+  workspace     ResearchWorkspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt @default(now())
+  agentRuns     AgentRun[]
+  reports       Report[]
+}
+
+model AgentRun {
+  id               String           @id @default(uuid())
+  workspaceId      String
+  workspace        ResearchWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  documentId       String?
+  document         Document?        @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  paperIds         String[]         @default([])
+  researchQuestion String
+  status           String           @default("COMPLETED") // PENDING | RUNNING | COMPLETED | FAILED
+  startedAt        DateTime         @default(now())
+  completedAt      DateTime?
+  executions       AgentExecution[]
+  reports          Report[]
+}
+
+model AgentExecution {
+  id          String   @id @default(uuid())
+  runId       String
+  agentRun    AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  agentName   String
+  status      String   @default("COMPLETED") // PENDING | RUNNING | COMPLETED | FAILED
+  input       Json?
+  output      Json?
+  log         String
+  startedAt   DateTime @default(now())
+  completedAt DateTime?
+}
+
+model ResearchGap {
+  id                    String            @id @default(uuid())
+  title                 String
+  description           String
+  confidenceScore       Int               @default(90)
+  supportingPaperTitles String[]
+  evidence              String[]
+  whyItMatters          String
+  impactLevel           String            @default("High")
+  workspaceId           String
+  workspace             ResearchWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdAt             DateTime          @default(now())
+}
+
+model ResearchDirection {
+  id                 String            @id @default(uuid())
+  title              String
+  description        String
+  targetGapTitle     String
+  supportingEvidence String[]
+  expectedImpact     String            @default("High")
+  difficulty         String            @default("Medium")
+  noveltyScore       Int               @default(90)
+  potentialVenue     String            @default("NeurIPS / ICLR")
+  isAddedToPlan      Boolean           @default(false)
+  workspaceId        String
+  workspace          ResearchWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdAt          DateTime          @default(now())
+}
+
+model Experiment {
+  id              String            @id @default(uuid())
+  title           String
+  directionTitle  String
+  hypothesis      String
+  dataset         String
+  method          String
+  metrics         String[]
+  expectedOutcome String
+  status          String            @default("Planning")
+  milestones      Json
+  workspaceId     String
+  workspace       ResearchWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdAt       DateTime          @default(now())
+}
+
+model Task {
+  id          String            @id @default(uuid())
+  title       String
+  description String
+  priority    String            @default("Medium")
+  status      String            @default("todo")
+  assignee    String            @default("Unassigned")
+  deadline    String
+  tag         String?
+  workspaceId String
+  workspace   ResearchWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdAt   DateTime          @default(now())
+}
+
+model Report {
+  id               String            @id @default(uuid())
+  title            String
+  workspaceId      String
+  workspace        ResearchWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  documentId       String?
+  document         Document?         @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  runId            String?
+  agentRun         AgentRun?         @relation(fields: [runId], references: [id], onDelete: SetNull)
+  documentName     String?
+  paperCount       Int               @default(0)
+  documentCount    Int               @default(0)
+  sourcesSummary   String?
+  researchQuestion String?
+  executiveSummary String?           @db.Text
+  keyConcepts      String[]
+  methodology      String?           @db.Text
+  empiricalFindings String[]
+  relationships    String[]
+  potentialGaps    Json?             // Array of gaps
+  directions       Json?             // Array of directions
+  experiments      Json?             // Array of experiments
+  tasks            Json?             // Array of tasks
+  validationStatus Json?             // Validation object
+  evidenceQuotes   Json?             // Array of verified quote objects
+  contentJson      Json?
+  createdAt        DateTime          @default(now())
+}
